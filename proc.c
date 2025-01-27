@@ -19,16 +19,24 @@ typedef struct Node {
 } Node;
 struct {
   struct spinlock lock;
+  // thread nodes will be stored in the first MAXTHREAD nodes and resource nodes will be stored in the next NRESOURCE nodes
   Node* adjList[MAXTHREAD+NRESOURCE];
   int visited[MAXTHREAD+NRESOURCE];
   int recStack[MAXTHREAD+NRESOURCE];
 } Graph;
+
+// pointer to where the resource structs will be stored
+char* resource_struct_buffer;
+// pointer to where the resource data will be stored
+char* resource_data_buffer;
+
+
 //################ADD Your Implementation Here######################
+                //Graph creation and functions
 
-
-
-      //Graph creation and functions
-
+// pointer to where the graph nodes will be stored
+char* graph_node_buffer;
+int current_node_buffer_index = 0;
 
 
 //##################################################################
@@ -172,11 +180,29 @@ userinit(void)
   // because the assignment might not be atomic.
 //################ADD Your Implementation Here######################
 
+  resource_struct_buffer = kalloc();
 
+  if (!resource_struct_buffer) {
+    panic("Failed to allocate memory for resource structs");
+  }
 
-      //Resource page handling and creation
+  Resource* resources = (Resource*)resource_struct_buffer;
+  
+  resource_data_buffer = resource_struct_buffer + NRESOURCE * sizeof(Resource);
+  int each_resource_size = (KSTACKSIZE - NRESOURCE * sizeof(Resource)) / NRESOURCE;
 
+  for (int i = 0; i < NRESOURCE; i++) {
+    resources[i].resourceid = i;
+    resources[i].acquired = 0;
+    resources[i].startaddr = resource_data_buffer + i * each_resource_size;
+    resources[i].name[0] = 'R';
+    resources[i].name[1] = (char)i;
+  }
 
+  graph_node_buffer = kalloc();
+  if (!graph_node_buffer) {
+    panic("Failed to allocate memory for graph nodes");
+  }
 
 //##################################################################
   acquire(&ptable.lock);
@@ -530,6 +556,7 @@ kill(int pid)
   release(&ptable.lock);
   return -1;
 }
+
 int clone(void (*worker)(void*,void*),void* arg1,void* arg2,void* stack)
 {
   //int i, pid;
@@ -603,6 +630,14 @@ int clone(void (*worker)(void*,void*),void* arg1,void* arg2,void* stack)
   New_Thread->state=RUNNABLE;
   release(&ptable.lock);
   //cprintf("process running Clone has  %d threads\n",curproc->Thread_Num);  
+
+  // Added by mili: Add the new thread to the graph
+  Node* node_in_buffer = (Node*)(graph_node_buffer + current_node_buffer_index * sizeof(Node));
+  node_in_buffer->vertex = New_Thread->tid;
+  node_in_buffer->type = PROCESS;
+  node_in_buffer->next = 0;
+  current_node_buffer_index++;
+
   return New_Thread->tid;
 }
 int join(int Thread_id)
@@ -691,19 +726,310 @@ procdump(void)
   }
 }
 
+int is_resource_acquired(int Resource_ID)
+{
+  Resource* resources = (Resource*)resource_struct_buffer;
+  return resources[Resource_ID].acquired;
+}
+
+void add_request_edge(int thread_id, int resource_id)
+{
+  Node* node_in_buffer = (Node*)(graph_node_buffer + current_node_buffer_index * sizeof(Node));
+  node_in_buffer->vertex = resource_id + MAXTHREAD;
+  node_in_buffer->type = RESOURCE;
+  node_in_buffer->next = 0;
+  current_node_buffer_index++;
+
+  acquire(&Graph.lock);
+  Node* head = Graph.adjList[thread_id];
+  if (!head) {
+    Graph.adjList[thread_id] = node_in_buffer;
+  } else {
+    while (head->next) {
+      head = head->next;
+    }
+    head->next = node_in_buffer;
+  }
+  release(&Graph.lock);
+}
+
+int remove_request_edge(int thread_id, int resource_id)
+{
+  acquire(&Graph.lock);
+  Node* head = Graph.adjList[thread_id];
+  if (!head) {
+    release(&Graph.lock);
+    return -1;
+  }
+  if (head->vertex == resource_id + MAXTHREAD) {
+    Graph.adjList[thread_id] = head->next;
+    release(&Graph.lock);
+    return 0;
+  }
+  while (head->next) {
+    if (head->next->vertex == resource_id + MAXTHREAD) {
+      head->next = head->next->next;
+      release(&Graph.lock);
+      return 0;
+    }
+    head = head->next;
+  }
+  release(&Graph.lock);
+  return -1;
+}
+
+int remove_acquired_edge(int thread_id, int resource_id)
+{
+  acquire(&Graph.lock);
+  Node* head = Graph.adjList[MAXTHREAD + resource_id];
+  if (!head) {
+    release(&Graph.lock);
+    return -1;
+  }
+  if (head->vertex == thread_id) {
+    Graph.adjList[MAXTHREAD + resource_id] = head->next;
+    release(&Graph.lock);
+    return 0;
+  }
+  while (head->next) {
+    if (head->next->vertex == thread_id) {
+      head->next = head->next->next;
+      release(&Graph.lock);
+      return 0;
+    }
+    head = head->next;
+  }
+  release(&Graph.lock);
+  return -1;
+}
+
+void add_acquired_edge(int thread_id, int resource_id)
+{
+  Node* node_in_buffer = (Node*)(graph_node_buffer + current_node_buffer_index * sizeof(Node));
+  node_in_buffer->vertex = thread_id;
+  node_in_buffer->type = PROCESS;
+  node_in_buffer->next = 0;
+  current_node_buffer_index++;
+
+  acquire(&Graph.lock);
+  Node* head = Graph.adjList[MAXTHREAD + resource_id];
+  if (!head) {
+    Graph.adjList[MAXTHREAD + resource_id] = node_in_buffer;
+  } else {
+    while (head->next) {
+      head = head->next;
+    }
+    head->next = node_in_buffer;
+  }
+  release(&Graph.lock);
+}
+
+// DFS algorithm to detect cycle in the graph
+int is_cyclic_util(int v, int visited[], int recStack[])
+{
+  if(visited[v] == 0)
+  {
+    // Mark the current node as visited and part of recursion stack
+    visited[v] = 1;
+    recStack[v] = 1;
+
+    Node* head = Graph.adjList[v];
+    while (head) {
+      if (!head->vertex) {
+        head = head->next;
+        continue;
+      }
+      if (!visited[head->vertex] && is_cyclic_util(head->vertex, visited, recStack)) {
+        return 1;
+      } else if (recStack[head->vertex]) {
+        return 1;
+      }
+      head = head->next;
+    }
+  }
+  recStack[v] = 0;
+  return 0;
+}
+
+int is_cyclic()
+{
+  acquire(&Graph.lock);
+  for (int i = 0; i < MAXTHREAD + NRESOURCE; i++) {
+    Graph.visited[i] = 0;
+    Graph.recStack[i] = 0;
+  }
+  for (int i = 0; i < MAXTHREAD + NRESOURCE; i++) {
+    if (is_cyclic_util(i, Graph.visited, Graph.recStack)) {
+      release(&Graph.lock);
+      return 1;
+    }
+  }
+  release(&Graph.lock);
+  return 0;
+}
+
+// check all the threads and see if there
+// is a thread waiting on the resource
+int get_next_thread_waiting(int resoruce_id)
+{
+  acquire(&Graph.lock);
+  for (int i = 0; i < MAXTHREAD; i++) {
+    Node* head = Graph.adjList[i];
+    while (head) {
+      if (head->vertex == resoruce_id) {
+        release(&Graph.lock);
+        return i;
+      }
+      head = head->next;
+    }
+  }
+  release(&Graph.lock);
+  return -1;
+}
+
+void print_graph()
+{
+  acquire(&Graph.lock);
+  // for (int i = 0; i < MAXTHREAD + NRESOURCE; i++) {
+  //   Node* head = Graph.adjList[i];
+  //   cprintf("%d: ", i);
+  //   while (head) {
+  //     cprintf("%d ", head->vertex);
+  //     head = head->next;
+  //   }
+  //   cprintf("\n");
+  // }
+  cprintf("Threads\n");
+  for (int i = 0; i < MAXTHREAD; i++)
+  {
+    Node* head = Graph.adjList[i];
+    cprintf("%d: ", i);
+    while (head)
+    {
+      cprintf("%d (%d)", head->vertex, head->vertex - MAXTHREAD);
+      head = head->next;
+    }
+    cprintf("\n");
+  }
+  cprintf("Resources\n");
+  for (int i = MAXTHREAD; i < MAXTHREAD + NRESOURCE; i++)
+  {
+    Node* head = Graph.adjList[i];
+    cprintf("%d: ", i - MAXTHREAD);
+    while (head)
+    {
+      cprintf("%d ", head->vertex);
+      head = head->next;
+    }
+    cprintf("\n");
+  }
+
+  
+  release(&Graph.lock);
+}
+
+int is_resource_requested_by(int thread_id, int resource_id)
+{
+  acquire(&Graph.lock);
+  Node* head = Graph.adjList[thread_id];
+  while (head) {
+    if (head->vertex == resource_id) {
+      release(&Graph.lock);
+      return 1;
+    }
+    head = head->next;
+  }
+  release(&Graph.lock);
+  return 0;
+}
+
+#define GRAPH_DEBUG
+
 int requestresource(int Resource_ID)
 {
 //################ADD Your Implementation Here######################
 
+  // Check if the resource is already acquired
+  // if so, add a request edge from the current thread to the resource
+  // and check if there is a cycle in the graph
+
+  #ifdef GRAPH_DEBUG
+  cprintf("Before request\n");
+  print_graph();
+  #endif
+
+  if (is_resource_requested_by(myproc()->tid, Resource_ID)) {
+    cprintf("Thread %d already requested resource %d\n", myproc()->tid, Resource_ID);
+    return -1;
+  }
+
+  if (is_resource_acquired(Resource_ID)) {
+    add_request_edge(myproc()->tid, Resource_ID);
+    if (is_cyclic()) {
+      cprintf("Deadlock detected\n");
+      #ifdef GRAPH_DEBUG
+      cprintf("before remove\n");
+      print_graph();
+      #endif
+      remove_request_edge(myproc()->tid, Resource_ID);
+      #ifdef GRAPH_DEBUG
+      cprintf("after remove\n");
+      print_graph();
+      #endif
+      return -1;
+    }
+  } else {
+    Resource* resources = (Resource*)resource_struct_buffer;
+    resources[Resource_ID].acquired = 1;
+    add_acquired_edge(myproc()->tid, Resource_ID);
+  }
+
+  #ifdef GRAPH_DEBUG
+  cprintf("After request\n");
+  print_graph();
+  #endif
+
+
 //##################################################################
-return -1;
+return 0;
 }
 int releaseresource(int Resource_ID)
 {
   //################ADD Your Implementation Here######################
 
+  // Simply check if there are other threads waiting on this
+
+  // if so, release the resource and add an acquired edge from the resource to the thread
+
+  // if not, release the resource
+
+  #ifdef GRAPH_DEBUG
+  cprintf("Before release\n");
+  print_graph();
+  #endif
+
+  if (!is_resource_acquired(Resource_ID)) {
+    cprintf("Resource %d is not acquired\n", Resource_ID);
+    return -1;
+  }
+
+  remove_acquired_edge(myproc()->tid, Resource_ID);
+
+  int next_thread = get_next_thread_waiting(Resource_ID);
+
+  if (next_thread != -1) {
+    add_acquired_edge(next_thread, Resource_ID);
+  } else {
+    Resource* resources = (Resource*)resource_struct_buffer;
+    resources[Resource_ID].acquired = 0;
+  }
+
+  #ifdef GRAPH_DEBUG
+  cprintf("After release\n");
+  print_graph();
+  #endif
 //##################################################################
-  return -1;
+  return 0;
 }
 int writeresource(int Resource_ID,void* buffer,int offset, int size)
 {
