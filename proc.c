@@ -824,12 +824,10 @@ void add_acquired_edge(int thread_id, int resource_id)
   release(&Graph.lock);
 }
 
-// DFS algorithm to detect cycle in the graph
 int is_cyclic_util(int v, int visited[], int recStack[])
 {
   if(visited[v] == 0)
   {
-    // Mark the current node as visited and part of recursion stack
     visited[v] = 1;
     recStack[v] = 1;
 
@@ -890,15 +888,6 @@ int get_next_thread_waiting(int resoruce_id)
 void print_graph()
 {
   acquire(&Graph.lock);
-  // for (int i = 0; i < MAXTHREAD + NRESOURCE; i++) {
-  //   Node* head = Graph.adjList[i];
-  //   cprintf("%d: ", i);
-  //   while (head) {
-  //     cprintf("%d ", head->vertex);
-  //     head = head->next;
-  //   }
-  //   cprintf("\n");
-  // }
   cprintf("Threads\n");
   for (int i = 0; i < MAXTHREAD; i++)
   {
@@ -943,7 +932,7 @@ int is_resource_requested_by(int thread_id, int resource_id)
   return 0;
 }
 
-#define GRAPH_DEBUG
+// #define GRAPH_DEBUG
 
 int requestresource(int Resource_ID)
 {
@@ -1031,17 +1020,80 @@ int releaseresource(int Resource_ID)
 //##################################################################
   return 0;
 }
+
+int is_this_thread_owner_of_resource(int Resource_ID)
+{
+  int current_thread_id = myproc()->tid;
+
+  acquire(&Graph.lock);
+  for (int i = MAXTHREAD; i < MAXTHREAD + NRESOURCE; i++) {
+    Node* head = Graph.adjList[i];
+    while (head) {
+      if (head->vertex == current_thread_id) {
+        release(&Graph.lock);
+        return 1;
+      }
+      head = head->next;
+    }
+  }
+  release(&Graph.lock);
+  return 0;
+}
+
+#define RESOURCE_SIZE KSTACKSIZE - (NRESOURCE * sizeof(Resource)) / NRESOURCE
+
 int writeresource(int Resource_ID,void* buffer,int offset, int size)
 {
 //################ADD Your Implementation Here######################
+  // check if user thread has acquired the the resource
+  // if so, write the data to the resource
+
+  if (is_this_thread_owner_of_resource(Resource_ID)) {
+    Resource* resources = (Resource*)resource_struct_buffer;
+    if (resources[Resource_ID].acquired) {
+      if (offset + size > RESOURCE_SIZE) {
+        cprintf("Buffer overflow\n");
+        return -1;
+      }
+      memmove(resources[Resource_ID].startaddr + offset, buffer, size);
+      return 0;
+    } else {
+      cprintf("Resource %d is not acquired\n", Resource_ID);
+      return -1;
+    }
+  } else {
+    cprintf("Thread %d does not own resource %d\n", myproc()->tid, Resource_ID);
+    return -1;
+  }
+
 
 //##################################################################
-  return -1;
+  return 0;
 }
 int readresource(int Resource_ID,int offset, int size,void* buffer)
 {
 //################ADD Your Implementation Here######################
+  // check if user thread has acquired the the resource
+  // if so, read the data from the resource
+
+  if (is_this_thread_owner_of_resource(Resource_ID)) {
+    Resource* resources = (Resource*)resource_struct_buffer;
+    if (resources[Resource_ID].acquired) {
+      if (offset + size > RESOURCE_SIZE) {
+        cprintf("Buffer overflow\n");
+        return -1;
+      }
+      memmove(buffer, resources[Resource_ID].startaddr + offset, size);
+      return 0;
+    } else {
+      cprintf("Resource %d is not acquired\n", Resource_ID);
+      return -1;
+    }
+  } else {
+    cprintf("Thread %d does not own resource %d\n", myproc()->tid, Resource_ID);
+    return -1;
+  }
 
 //##################################################################
-  return -1;
+  return 0;
 }
