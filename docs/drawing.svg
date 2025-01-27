@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="150.97087mm"
+   height="25.04287mm"
+   viewBox="0 0 150.97087 25.04287"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   sodipodi:docname="drawing.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="1.5589927"
+     inkscape:cx="186.65899"
+     inkscape:cy="139.51316"
+     inkscape:window-width="2556"
+     inkscape:window-height="1422"
+     inkscape:window-x="1920"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-32.79228,-97.283709)">
+    <path
+       id="rect1"
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.264583"
+       inkscape:label="rect1"
+       d="M 32.924572,97.416 H 183.63086 v 24.77829 H 32.924572 Z" />
+    <path
+       style="fill:#ffffff;stroke:#000000;stroke-width:0.264583;stroke-opacity:1"
+       d="m 79.463708,97.623138 c 0,24.438852 0.169714,24.608572 0.169714,24.608572"
+       id="path1" />
+    <text
+       xml:space="preserve"
+       style="font-size:5.08503px;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#ffffff;stroke:#000000;stroke-width:0.423752;stroke-opacity:1"
+       x="56.333645"
+       y="108.43134"
+       id="text1"><tspan
+         sodipodi:role="line"
+         id="tspan1"
+         style="text-align:center;writing-mode:lr-tb;text-anchor:middle;stroke-width:0.423752"
+         x="56.333645"
+         y="108.43134">Resource</tspan><tspan
+         sodipodi:role="line"
+         style="text-align:center;writing-mode:lr-tb;text-anchor:middle;stroke-width:0.423752"
+         x="56.333645"
+         y="114.78763"
+         id="tspan3">structs</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:4.58611px;text-align:start;writing-mode:lr-tb;direction:ltr;text-anchor:start;fill:#ffffff;stroke:#000000;stroke-width:0.264583;stroke-opacity:1"
+       x="114.76428"
+       y="112.04886"
+       id="text2"><tspan
+         sodipodi:role="line"
+         id="tspan2"
+         style="font-size:4.58611px;stroke-width:0.264583"
+         x="114.76428"
+         y="112.04886">Resource data</tspan></text>
+  </g>
+</svg>
